@@ -1,0 +1,49 @@
+services:
+  api:
+    image: ${RAILWAY_FIXED_IP_ADDRESS}:${PORT:-8000}
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    port: 8000
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=${{Postgres.DATABASE_URL}}
+      - REDIS_URL=${{Redis.REDIS_URL}}
+      - PORT=8000
+      - WORKERS=4
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=ai_downtime
+      - POSTGRES_PASSWORD=${{Postgres.POSTGRES_PASSWORD}}
+      - POSTGRES_DB=ai_downtime
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+
+  redis:
+    image: redis:7-alpine
+    environment:
+      - REDIS_PASSWORD=${{Redis.REDIS_PASSWORD}}
+    command: redis-server --requirepass ${{Redis.REDIS_PASSWORD}}
+    volumes:
+      - redis_data:/data
+    ports:
+      - 6379:6379
+
+volumes:
+  postgres_data:
+  redis_data:
+
+releaseName: ai-downtime-production

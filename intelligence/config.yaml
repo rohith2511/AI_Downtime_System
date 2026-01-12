@@ -1,0 +1,26 @@
+windows:
+  sampling_interval_seconds: 15
+  short_minutes: 5
+  long_minutes: 10
+  history_points: 200
+thresholds:
+  cpu:
+    warn: 70
+    crit: 90
+  memory:
+    warn: 75
+    crit: 90
+  error_rate_per_min:
+    warn: 5
+    crit: 15
+  latency_p95_ms:
+    warn: 400
+    crit: 800
+  node_exporter_down_seconds: 30
+cooldowns:
+  recovery_seconds: 300
+  alert_seconds: 120
+actions:
+  high_risk: restart_app
+logging:
+  recovery_history: true

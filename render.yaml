@@ -1,0 +1,68 @@
+services:
+  - type: web
+    name: ai-downtime-api
+    runtime: docker
+    region: oregon
+    plan: pro
+    
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: 1
+      - key: PORT
+        value: 8000
+      - key: WORKERS
+        value: 4
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-downtime-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: ai-downtime-redis
+          property: connectionString
+      - key: ENVIRONMENT
+        value: production
+    
+    healthCheckPath: /health
+    healthCheckInterval: 30
+    
+    dockerfile: docker/Dockerfile
+    dockerContext: ./
+    
+    autoDeploy: true
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 4 -b 0.0.0.0:8000 app.main:app
+
+  - type: redis
+    name: ai-downtime-redis
+    region: oregon
+    plan: starter
+    evictionPolicy: noeviction
+
+  - type: pserv
+    name: ai-downtime-db
+    runtime: python
+    region: oregon
+    plan: starter
+    
+    envVars:
+      - key: POSTGRES_USER
+        value: ai_downtime
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+      - key: POSTGRES_DB
+        value: ai_downtime
+    
+    startCommand: postgres
+
+databases:
+  - name: ai-downtime-db
+    databaseName: ai_downtime
+    user: ai_downtime
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Anywhere
+
+routes:
+  - type: http
+    source: /
+    destination: http://ai-downtime-api:8000

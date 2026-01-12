@@ -1,0 +1,41 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Build/Dist
+build/
+dist/
+
+# Logs
+*.log
+
+# Local overrides
+.env
+.env.*
+
+# Node (dashboard)
+node_modules/
+.dashboard-cache/

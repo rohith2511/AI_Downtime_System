@@ -1,0 +1,127 @@
+﻿apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-downtime
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: ai-downtime
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: 'fastapi'
+        static_configs:
+          - targets: ['fastapi-app:8000']
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-app
+  namespace: ai-downtime
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fastapi-app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: fastapi-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: fastapi-app
+        image: ai-downtime-app:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: PORT
+          value: "8000"
+        - name: WORKERS
+          value: "4"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-app
+  namespace: ai-downtime
+spec:
+  selector:
+    app: fastapi-app
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fastapi-hpa
+  namespace: ai-downtime
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fastapi-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fastapi-pdb
+  namespace: ai-downtime
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: fastapi-app

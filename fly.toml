@@ -1,0 +1,70 @@
+app = "ai-downtime-system"
+primary_region = "iad"
+
+[build]
+dockerfile = "docker/Dockerfile"
+builtin = "docker"
+
+[env]
+PYTHONUNBUFFERED = "1"
+PORT = "8000"
+WORKERS = "4"
+ENVIRONMENT = "production"
+
+[[services]]
+internal_port = 8000
+processes = ["app"]
+protocol = "tcp"
+script_checks = []
+
+[services.concurrency]
+hard_limit = 100
+soft_limit = 80
+type = "requests"
+
+[[services.tcp_checks]]
+grace_period = "30s"
+interval = "15s"
+restart_limit = 5
+timeout = "5s"
+
+[http_service]
+internal_port = 8000
+force_https = true
+auto_stop_machines = true
+auto_start_machines = true
+min_machines_running = 1
+processes = ["app"]
+
+[[http_service.checks]]
+grace_period = "10s"
+interval = "10s"
+method = "get"
+path = "/health"
+protocol = "http"
+restart_limit = 5
+timeout = "5s"
+
+[[mounts]]
+destination = "/data"
+source = "ai_downtime_data"
+
+[postgres]
+image = "postgres:16"
+
+[[postgres.databases]]
+name = "ai_downtime"
+user = "ai_downtime"
+password = "changeme_secure_password"
+
+[redis]
+image = "redis:7-alpine"
+plan = "free"
+
+[[env]]
+key = "DATABASE_URL"
+value = "postgresql://ai_downtime:${POSTGRES_PASSWORD}@localhost/ai_downtime"
+
+[[env]]
+key = "REDIS_URL"
+value = "redis://localhost:6379"

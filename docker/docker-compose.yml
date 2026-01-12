@@ -1,0 +1,308 @@
+version: "3.9"
+
+services:
+  fastapi-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ai-downtime-app:latest
+    container_name: ai-downtime-app
+    labels:
+      - "app=ai-downtime"
+      - "environment=production"
+      - "version=1.0"
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - WORKERS=4
+      # - CONFIG_PATH=/etc/ai-downtime/config.yaml
+    volumes: []
+      # - /path/to/config.yaml:/etc/ai-downtime/config.yaml:ro
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        labels: "app=ai-downtime"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - observability
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: prometheus
+    labels:
+      - "app=prometheus"
+      - "environment=production"
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    ports:
+      - "9090:9090"
+    networks:
+      - observability
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: grafana
+    labels:
+      - "app=grafana"
+      - "environment=production"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_COOKIE_SECURE=true
+      - GF_SECURITY_DISABLE_BRUTE_FORCE_LOGIN_PROTECTION=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - observability
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    labels:
+      - "app=node-exporter"
+      - "environment=production"
+    pid: host
+    ports:
+      - "9101:9100"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+    networks:
+      - observability
+
+  # A) Nginx Reverse Proxy + TLS
+  nginx:
+    image: nginx:alpine
+    container_name: nginx
+    labels:
+      - "app=nginx"
+      - "environment=production"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - fastapi-app
+      - grafana
+      - prometheus
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - observability
+
+  # B) AlertManager
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: alertmanager
+    labels:
+      - "app=alertmanager"
+      - "environment=production"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/config.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/config.yml"
+      - "--storage.path=/alertmanager"
+    ports:
+      - "9093:9093"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+    networks:
+      - observability
+
+  # C) PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    labels:
+      - "app=postgres"
+      - "environment=production"
+    environment:
+      - POSTGRES_USER=ai_downtime
+      - POSTGRES_PASSWORD=secure_password_change_me
+      - POSTGRES_DB=ai_downtime
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - observability
+
+  # D) Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    labels:
+      - "app=redis"
+      - "environment=production"
+    command: redis-server --appendonly yes --requirepass your_redis_password
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+    networks:
+      - observability
+
+  # E) Loki Log Aggregation
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: loki
+    labels:
+      - "app=loki"
+      - "environment=production"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+    networks:
+      - observability
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: promtail
+    labels:
+      - "app=promtail"
+      - "environment=production"
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    networks:
+      - observability
+
+networks:
+  observability:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  loki_data:
+    driver: local

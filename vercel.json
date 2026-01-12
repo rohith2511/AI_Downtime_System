@@ -1,0 +1,26 @@
+{
+  "projectSettings": {
+    "name": "ai-downtime-dashboard",
+    "buildCommand": "npm run build",
+    "outputDirectory": "out"
+  },
+  "framework": "static",
+  "buildCommand": "echo 'Dashboard is static HTML+CSS+JS'",
+  "outputDirectory": "dashboard",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "env": {
+    "REACT_APP_API_URL": {
+      "default": "https://your-api-domain.com"
+    }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "main": true
+    }
+  }
+}
